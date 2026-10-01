@@ -1,0 +1,38 @@
+# Dependencies
+node_modules
+
+# Build output
+dist
+dist-ssr
+*.local
+
+# Environment variables (never commit real credentials)
+.env
+.env.*
+!.env.example
+
+# Firebase CLI
+.firebase
+.firebaserc
+firebase-debug.log*
+firestore-debug.log*
+ui-debug.log*
+
+# Service-account keys must never be committed
+*service-account*.json
+*-firebase-adminsdk-*.json
+
+# Logs
+logs
+*.log
+npm-debug.log*
+
+# Editor / OS
+.vscode/*
+!.vscode/extensions.json
+.idea
+.DS_Store
+Thumbs.db
+
+# Vercel
+.vercel

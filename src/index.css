@@ -1,0 +1,171 @@
+@import 'tailwindcss';
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+/*
+ * Semantic color roles. Components use these (bg-surface, text-ink-2, border-line, ...)
+ * so light and dark mode are defined once, here, rather than with dark: variants everywhere.
+ */
+@theme inline {
+  --color-page: var(--page);
+  --color-surface: var(--surface);
+  --color-subtle: var(--subtle);
+  --color-muted: var(--muted);
+  --color-line: var(--line);
+  --color-line-strong: var(--line-strong);
+  --color-ink: var(--ink);
+  --color-ink-2: var(--ink-2);
+  --color-ink-3: var(--ink-3);
+  --color-brand: var(--brand);
+  --color-brand-hover: var(--brand-hover);
+  --color-brand-soft: var(--brand-soft);
+  --color-brand-text: var(--brand-text);
+  --color-positive: var(--positive);
+  --color-positive-soft: var(--positive-soft);
+  --color-negative: var(--negative);
+  --color-negative-soft: var(--negative-soft);
+  --color-caution: var(--caution);
+  --color-caution-soft: var(--caution-soft);
+  --color-overlay: var(--overlay);
+  --color-danger: var(--danger);
+  --color-danger-hover: var(--danger-hover);
+}
+
+@theme {
+  --font-sans: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+
+  --animate-fade-in: fade-in 150ms ease-out;
+  --animate-scale-in: scale-in 160ms cubic-bezier(0.2, 0.8, 0.2, 1);
+  --animate-slide-up: slide-up 220ms cubic-bezier(0.2, 0.8, 0.2, 1);
+  --animate-toast-in: toast-in 200ms cubic-bezier(0.2, 0.8, 0.2, 1);
+
+  @keyframes fade-in {
+    from { opacity: 0; }
+    to { opacity: 1; }
+  }
+  @keyframes scale-in {
+    from { opacity: 0; transform: translateY(8px) scale(0.98); }
+    to { opacity: 1; transform: translateY(0) scale(1); }
+  }
+  @keyframes slide-up {
+    from { transform: translateY(24px); opacity: 0; }
+    to { transform: translateY(0); opacity: 1; }
+  }
+  @keyframes toast-in {
+    from { opacity: 0; transform: translateY(8px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+}
+
+:root {
+  color-scheme: light;
+  --page: #f6f6f4;
+  --surface: #ffffff;
+  --subtle: #f3f3f0;
+  --muted: #ebeae5;
+  --line: #e4e3dd;
+  --line-strong: #d3d2ca;
+  --ink: #111110;
+  --ink-2: #52514e;
+  --ink-3: #6b6a65;
+  --brand: #2563eb;
+  --brand-hover: #1d4ed8;
+  --brand-soft: #eef3fe;
+  --brand-text: #1d4ed8;
+  --positive: #047857;
+  --positive-soft: #e8f6ef;
+  --negative: #c42b2b;
+  --negative-soft: #fdeeee;
+  --caution: #9a5b00;
+  --caution-soft: #fff6e0;
+  --overlay: rgb(17 17 16 / 0.45);
+  --danger: #c42b2b;
+  --danger-hover: #a52222;
+
+  /* Meter / status fills (data-viz status palette; always paired with an icon + label) */
+  --meter-ok: #2a78d6;
+  --meter-warning: #fab219;
+  --meter-serious: #ec835a;
+  --meter-critical: #d03b3b;
+}
+
+.dark {
+  color-scheme: dark;
+  --page: #0d0d0d;
+  --surface: #1a1a19;
+  --subtle: #232321;
+  --muted: #2c2c2a;
+  --line: #2c2c2a;
+  --line-strong: #3d3d3a;
+  --ink: #f5f5f3;
+  --ink-2: #c3c2b7;
+  --ink-3: #9d9c94;
+  --brand: #2563eb;
+  --brand-hover: #1d4ed8;
+  --brand-soft: rgb(37 99 235 / 0.16);
+  --brand-text: #8db1ff;
+  --positive: #34c88a;
+  --positive-soft: rgb(52 200 138 / 0.12);
+  --negative: #f37b7b;
+  --negative-soft: rgb(243 123 123 / 0.12);
+  --caution: #f5c04e;
+  --caution-soft: rgb(245 192 78 / 0.12);
+  --overlay: rgb(0 0 0 / 0.6);
+
+  --meter-ok: #3987e5;
+}
+
+@layer base {
+  html {
+    -webkit-tap-highlight-color: transparent;
+    text-size-adjust: 100%;
+  }
+
+  body {
+    background-color: var(--page);
+    color: var(--ink);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--brand);
+    outline-offset: 2px;
+  }
+
+  button:not(:disabled),
+  [role='button']:not([aria-disabled='true']) {
+    cursor: pointer;
+  }
+
+  /* Keep native date pickers and number inputs tidy in both themes */
+  input[type='date']::-webkit-calendar-picker-indicator {
+    cursor: pointer;
+    opacity: 0.6;
+  }
+  .dark input[type='date']::-webkit-calendar-picker-indicator {
+    filter: invert(1);
+  }
+}
+
+@layer utilities {
+  .tabular {
+    font-variant-numeric: tabular-nums;
+  }
+  .pb-safe {
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+  .scrollbar-thin {
+    scrollbar-width: thin;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}

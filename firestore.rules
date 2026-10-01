@@ -1,0 +1,164 @@
+rules_version = '2';
+
+// Expense Tracker — Firestore Security Rules
+//
+// Every document lives under /users/{uid}/... and is only accessible to the
+// signed-in user whose Firebase Auth UID matches {uid}. Anything not matched
+// below (including the /users/{uid} document itself) is denied by default.
+//
+// Writes are validated server-side: required fields, allowed keys, types,
+// enum values, numeric ranges and server-generated timestamps. Frontend
+// validation is a convenience only — these rules are the security boundary.
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ---------------------------------------------------------------- helpers
+
+    function isOwner(userId) {
+      return request.auth != null && request.auth.uid == userId;
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function stored() {
+      return resource.data;
+    }
+
+    function isString(value, minLength, maxLength) {
+      return value is string && value.size() >= minLength && value.size() <= maxLength;
+    }
+
+    function isAmount(value) {
+      return value is number && value > 0 && value <= 1000000000;
+    }
+
+    // Calendar date stored as "YYYY-MM-DD" (timezone independent).
+    function isDateKey(value) {
+      return value is string
+        && value.matches('^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])$');
+    }
+
+    // New documents must carry server timestamps (serverTimestamp()).
+    function hasCreateTimestamps() {
+      return incoming().createdAt == request.time
+        && incoming().updatedAt == request.time;
+    }
+
+    // Updates must refresh updatedAt. createdAt is preserved, or reset to the
+    // server time when a backup restore overwrites an existing document.
+    function hasUpdateTimestamps() {
+      return incoming().updatedAt == request.time
+        && (incoming().createdAt == stored().createdAt || incoming().createdAt == request.time);
+    }
+
+    // ---------------------------------------------------------------- schemas
+
+    function isValidTransaction(data) {
+      let fields = ['type', 'amount', 'categoryId', 'categoryName', 'paymentMethod',
+                    'description', 'date', 'createdAt', 'updatedAt'];
+      return data.keys().hasAll(fields)
+        && data.keys().hasOnly(fields)
+        && data.type in ['expense', 'income']
+        && isAmount(data.amount)
+        && isString(data.categoryId, 1, 128)
+        && isString(data.categoryName, 1, 50)
+        && data.paymentMethod in ['cash', 'upi', 'credit_card', 'debit_card',
+                                  'bank_transfer', 'net_banking', 'other']
+        && isString(data.description, 0, 200)
+        && isDateKey(data.date);
+    }
+
+    function isValidCategory(data) {
+      let fields = ['name', 'type', 'icon', 'isDefault', 'createdAt', 'updatedAt'];
+      return data.keys().hasAll(fields)
+        && data.keys().hasOnly(fields)
+        && isString(data.name, 1, 50)
+        && data.type in ['expense', 'income']
+        && isString(data.icon, 1, 40)
+        && data.isDefault is bool;
+    }
+
+    function isValidBudget(budgetId, data) {
+      let fields = ['name', 'scope', 'categoryIds', 'amount', 'createdAt', 'updatedAt'];
+      return data.keys().hasAll(fields)
+        && data.keys().hasOnly(fields)
+        && isString(data.name, 1, 50)
+        && data.scope in ['overall', 'category']
+        // Exactly one overall budget, stored at the fixed id "overall".
+        && (data.scope == 'overall') == (budgetId == 'overall')
+        && data.categoryIds is list
+        && (data.scope == 'overall'
+              ? data.categoryIds.size() == 0
+              : data.categoryIds.size() >= 1 && data.categoryIds.size() <= 30)
+        && isAmount(data.amount);
+    }
+
+    function isValidSettings(data) {
+      let fields = ['currency', 'theme', 'onboardingCompleted', 'createdAt', 'updatedAt'];
+      return data.keys().hasAll(fields)
+        && data.keys().hasOnly(fields)
+        && data.currency in ['INR', 'USD', 'EUR', 'GBP']
+        && data.theme in ['light', 'dark', 'system']
+        && data.onboardingCompleted is bool;
+    }
+
+    function isValidProfile(data) {
+      return data.keys().hasAll(['displayName', 'email', 'photoURL', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly(['displayName', 'email', 'photoURL', 'createdAt', 'updatedAt'])
+        && isString(data.displayName, 0, 100)
+        && isString(data.email, 0, 320)
+        && (data.photoURL == null || isString(data.photoURL, 1, 2048));
+    }
+
+    // ------------------------------------------------------------------ paths
+
+    match /users/{userId} {
+
+      match /transactions/{transactionId} {
+        allow read: if isOwner(userId);
+        allow create: if isOwner(userId) && isValidTransaction(incoming()) && hasCreateTimestamps();
+        allow update: if isOwner(userId) && isValidTransaction(incoming()) && hasUpdateTimestamps();
+        allow delete: if isOwner(userId);
+      }
+
+      match /categories/{categoryId} {
+        allow read: if isOwner(userId);
+        allow create: if isOwner(userId) && isValidCategory(incoming()) && hasCreateTimestamps();
+        // A category's type is fixed once created.
+        allow update: if isOwner(userId) && isValidCategory(incoming()) && hasUpdateTimestamps()
+          && incoming().type == stored().type;
+        allow delete: if isOwner(userId);
+      }
+
+      match /budgets/{budgetId} {
+        allow read: if isOwner(userId);
+        allow create: if isOwner(userId) && isValidBudget(budgetId, incoming()) && hasCreateTimestamps();
+        allow update: if isOwner(userId) && isValidBudget(budgetId, incoming()) && hasUpdateTimestamps();
+        allow delete: if isOwner(userId);
+      }
+
+      // Single document: /users/{uid}/settings/data
+      match /settings/{docId} {
+        allow read: if isOwner(userId) && docId == 'data';
+        allow create: if isOwner(userId) && docId == 'data'
+          && isValidSettings(incoming()) && hasCreateTimestamps();
+        allow update: if isOwner(userId) && docId == 'data'
+          && isValidSettings(incoming()) && hasUpdateTimestamps();
+        allow delete: if false;
+      }
+
+      // Single document: /users/{uid}/profile/data
+      match /profile/{docId} {
+        allow read: if isOwner(userId) && docId == 'data';
+        allow create: if isOwner(userId) && docId == 'data'
+          && isValidProfile(incoming()) && hasCreateTimestamps();
+        allow update: if isOwner(userId) && docId == 'data'
+          && isValidProfile(incoming()) && hasUpdateTimestamps();
+        allow delete: if false;
+      }
+    }
+  }
+}
