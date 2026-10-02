@@ -35,7 +35,12 @@ export const LIMITS = {
   budgetNameMax: 50,
   budgetCategoriesMax: 30,
   displayNameMax: 100,
+  personNameMax: 60,
+  ledgerNoteMax: 200,
 };
+
+/** Lend & Borrow entry directions, from your point of view. */
+export const LEDGER_DIRECTIONS = ['gave', 'got'];
 
 /** Spending levels (percent of budget) that raise an in-app alert. */
 export const BUDGET_ALERT_THRESHOLDS = [80, 90, 100];

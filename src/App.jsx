@@ -19,6 +19,8 @@ const ForgotPassword = lazy(() => import('@/pages/auth/ForgotPassword'));
 const Dashboard = lazy(() => import('@/pages/Dashboard'));
 const Transactions = lazy(() => import('@/pages/Transactions'));
 const Budgets = lazy(() => import('@/pages/Budgets'));
+const LendBorrow = lazy(() => import('@/pages/LendBorrow'));
+const PersonLedger = lazy(() => import('@/pages/PersonLedger'));
 const Analytics = lazy(() => import('@/pages/Analytics'));
 const Settings = lazy(() => import('@/pages/Settings'));
 const NotFound = lazy(() => import('@/pages/NotFound'));
@@ -42,6 +44,8 @@ function AppRoutes() {
             <Route path="/dashboard" element={<Dashboard />} />
             <Route path="/transactions" element={<Transactions />} />
             <Route path="/budgets" element={<Budgets />} />
+            <Route path="/lend-borrow" element={<LendBorrow />} />
+            <Route path="/lend-borrow/:personId" element={<PersonLedger />} />
             <Route path="/analytics" element={<Analytics />} />
             <Route path="/settings" element={<Settings />} />
           </Route>

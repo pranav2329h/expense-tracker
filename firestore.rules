@@ -105,6 +105,29 @@ service cloud.firestore {
         && data.onboardingCompleted is bool;
     }
 
+    // Lend & Borrow: a person you exchange money with.
+    function isValidPerson(data) {
+      let fields = ['name', 'createdAt', 'updatedAt'];
+      return data.keys().hasAll(fields)
+        && data.keys().hasOnly(fields)
+        && isString(data.name, 1, 60);
+    }
+
+    // Lend & Borrow: "gave" = money you gave / paid for them / repaid them;
+    // "got" = money you received / they paid for you / they repaid you.
+    function isValidLedgerEntry(data) {
+      let fields = ['personId', 'personName', 'direction', 'amount', 'note', 'date',
+                    'createdAt', 'updatedAt'];
+      return data.keys().hasAll(fields)
+        && data.keys().hasOnly(fields)
+        && isString(data.personId, 1, 128)
+        && isString(data.personName, 1, 60)
+        && data.direction in ['gave', 'got']
+        && isAmount(data.amount)
+        && isString(data.note, 0, 200)
+        && isDateKey(data.date);
+    }
+
     function isValidProfile(data) {
       return data.keys().hasAll(['displayName', 'email', 'photoURL', 'createdAt', 'updatedAt'])
         && data.keys().hasOnly(['displayName', 'email', 'photoURL', 'createdAt', 'updatedAt'])
@@ -137,6 +160,20 @@ service cloud.firestore {
         allow read: if isOwner(userId);
         allow create: if isOwner(userId) && isValidBudget(budgetId, incoming()) && hasCreateTimestamps();
         allow update: if isOwner(userId) && isValidBudget(budgetId, incoming()) && hasUpdateTimestamps();
+        allow delete: if isOwner(userId);
+      }
+
+      match /people/{personId} {
+        allow read: if isOwner(userId);
+        allow create: if isOwner(userId) && isValidPerson(incoming()) && hasCreateTimestamps();
+        allow update: if isOwner(userId) && isValidPerson(incoming()) && hasUpdateTimestamps();
+        allow delete: if isOwner(userId);
+      }
+
+      match /ledger/{entryId} {
+        allow read: if isOwner(userId);
+        allow create: if isOwner(userId) && isValidLedgerEntry(incoming()) && hasCreateTimestamps();
+        allow update: if isOwner(userId) && isValidLedgerEntry(incoming()) && hasUpdateTimestamps();
         allow delete: if isOwner(userId);
       }
 

@@ -5,7 +5,7 @@
  */
 import { CURRENCY_CODES } from './currency';
 import { isValidDateKey } from './dates';
-import { LIMITS, PAYMENT_METHOD_VALUES, THEME_PREFERENCES, TRANSACTION_TYPES } from './constants';
+import { LEDGER_DIRECTIONS, LIMITS, PAYMENT_METHOD_VALUES, THEME_PREFERENCES, TRANSACTION_TYPES } from './constants';
 import { isCategoryIconKey } from './categoryIcons';
 
 const DOC_ID_PATTERN = /^[A-Za-z0-9_-]{1,128}$/;
@@ -173,6 +173,56 @@ export function validateBudgetInput(input, { categoriesById } = {}) {
   }
 
   return result(errors, { scope, name, categoryIds, amount: amount.value });
+}
+
+export function validatePersonName(raw) {
+  const name = cleanText(raw);
+  if (!name) return { error: 'Enter a name.' };
+  if (name.length > LIMITS.personNameMax) return { error: `Keep the name under ${LIMITS.personNameMax} characters.` };
+  return { value: name };
+}
+
+/** Name already used by another person (case-insensitive)? */
+export function findPersonByName(people, name, exceptId = null) {
+  const lower = name.toLocaleLowerCase();
+  return people.find((person) => person.id !== exceptId && person.name.toLocaleLowerCase() === lower) ?? null;
+}
+
+/**
+ * Lend & Borrow entry. `personId` is optional for new entries (a new person is then
+ * created from `personName`); when present it must be a valid document id.
+ */
+export function validateLedgerEntryInput(input) {
+  const errors = {};
+  const source = input ?? {};
+
+  const person = validatePersonName(source.personName);
+  if (person.error) errors.personName = person.error;
+
+  const personId = typeof source.personId === 'string' && source.personId ? source.personId : null;
+  if (personId && !isValidDocId(personId)) errors.personName = 'Choose a valid person.';
+
+  const direction = LEDGER_DIRECTIONS.includes(source.direction) ? source.direction : null;
+  if (!direction) errors.direction = 'Choose whether you gave or got money.';
+
+  const amount = validateAmount(source.amount);
+  if (amount.error) errors.amount = amount.error;
+
+  const date = typeof source.date === 'string' ? source.date : '';
+  if (!date) errors.date = 'Choose a date.';
+  else if (!isValidDateKey(date)) errors.date = 'Enter a valid date.';
+
+  const note = cleanText(source.note ?? '');
+  if (note.length > LIMITS.ledgerNoteMax) errors.note = `Keep the note under ${LIMITS.ledgerNoteMax} characters.`;
+
+  return result(errors, {
+    personId,
+    personName: person.value,
+    direction,
+    amount: amount.value,
+    date,
+    note,
+  });
 }
 
 export function validateSettingsPatch(patch) {

@@ -13,6 +13,7 @@ import { ErrorState } from '@/components/common/ErrorState';
 import { PageHeader } from '@/components/common/PageHeader';
 import { SkeletonCard } from '@/components/common/Skeleton';
 import { StatCard } from '@/components/common/StatCard';
+import { LedgerSummaryCard } from '@/components/dashboard/LedgerSummaryCard';
 import { MonthlyBudgetCard } from '@/components/dashboard/MonthlyBudgetCard';
 import { RecentTransactions } from '@/components/dashboard/RecentTransactions';
 import { useAuth } from '@/hooks/useAuth';
@@ -226,6 +227,8 @@ export default function Dashboard() {
               </div>
             </>
           )}
+
+          <LedgerSummaryCard />
 
           {(loading || hasAnyTransactions) && <RecentTransactions transactions={recent} loading={loading} />}
 

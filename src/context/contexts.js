@@ -9,3 +9,4 @@ export const CategoriesContext = createContext(null);
 export const BudgetsContext = createContext(null);
 export const RecentTransactionsContext = createContext(null);
 export const TransactionModalContext = createContext(null);
+export const LedgerContext = createContext(null);

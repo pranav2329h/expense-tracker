@@ -6,9 +6,12 @@ import { getPaymentMethodLabel, TYPE_LABELS } from './constants';
 import { toDateKey } from './dates';
 import { AppError } from './errors';
 import {
+  findPersonByName,
   isValidDocId,
   validateBudgetInput,
   validateCategoryInput,
+  validateLedgerEntryInput,
+  validatePersonName,
   validateTransactionInput,
 } from './validation';
 
@@ -64,7 +67,16 @@ export function downloadFile(content, filename, mimeType) {
 
 const toIso = (value) => (value instanceof Date && !Number.isNaN(value.getTime()) ? value.toISOString() : null);
 
-export function buildBackup({ transactions, categories, budgets, settings, resolveCategory }) {
+export function buildBackup({
+  transactions,
+  categories,
+  budgets,
+  settings,
+  resolveCategory,
+  people = [],
+  ledger = [],
+}) {
+  const peopleById = new Map(people.map((person) => [person.id, person]));
   return {
     app: BACKUP_APP_ID,
     version: BACKUP_VERSION,
@@ -83,6 +95,16 @@ export function buildBackup({ transactions, categories, budgets, settings, resol
       date: tx.date,
       createdAt: toIso(tx.createdAt),
       updatedAt: toIso(tx.updatedAt),
+    })),
+    people: people.map(({ id, name }) => ({ id, name })),
+    ledger: ledger.map((entry) => ({
+      id: entry.id,
+      personId: entry.personId,
+      personName: peopleById.get(entry.personId)?.name ?? entry.personName,
+      direction: entry.direction,
+      amount: entry.amount,
+      note: entry.note,
+      date: entry.date,
     })),
   };
 }
@@ -116,13 +138,16 @@ export function parseBackup(text) {
       'import/too-large',
     );
   }
-  for (const key of ['categories', 'budgets']) {
+  for (const key of ['categories', 'budgets', 'people', 'ledger']) {
     if (data[key] !== undefined && !Array.isArray(data[key])) {
       throw new AppError(`The backup's ${key} list is malformed.`, 'import/invalid-format');
     }
   }
+  if ((data.ledger?.length ?? 0) > MAX_IMPORT_TRANSACTIONS) {
+    throw new AppError('This backup has too many Lend & Borrow entries.', 'import/too-large');
+  }
 
-  const skipped = { transactions: 0, categories: 0, budgets: 0 };
+  const skipped = { transactions: 0, categories: 0, budgets: 0, people: 0, ledger: 0 };
 
   const categories = [];
   const categoryIds = new Set();
@@ -173,16 +198,48 @@ export function parseBackup(text) {
     transactions.push({ id: raw.id, ...value });
   }
 
-  return { transactions, categories, budgets, skipped };
+  // Lend & Borrow (optional — older backups don't have these lists).
+  const people = [];
+  const personIds = new Set();
+  for (const raw of data.people ?? []) {
+    const name = isPlainObject(raw) ? validatePersonName(raw.name) : { error: true };
+    if (name.error || !isValidDocId(raw.id) || personIds.has(raw.id)) {
+      skipped.people += 1;
+      continue;
+    }
+    personIds.add(raw.id);
+    people.push({ id: raw.id, name: name.value });
+  }
+
+  const ledger = [];
+  const entryIds = new Set();
+  for (const raw of data.ledger ?? []) {
+    const validation =
+      isPlainObject(raw) && isValidDocId(raw.id) && !entryIds.has(raw.id) && isValidDocId(raw.personId)
+        ? validateLedgerEntryInput(raw)
+        : null;
+    if (!validation?.ok) {
+      skipped.ledger += 1;
+      continue;
+    }
+    entryIds.add(raw.id);
+    ledger.push({ id: raw.id, ...validation.value });
+  }
+
+  return { transactions, categories, budgets, people, ledger, skipped };
 }
 
 /**
  * Reconciles a parsed backup with the user's current data:
  * - categories that already exist (same id, or same type + name) are reused, not duplicated;
  * - transactions are re-pointed at the reused categories, and dropped if the category type disagrees;
- * - budgets that already exist are left untouched; unknown category ids are removed from new ones.
+ * - budgets that already exist are left untouched; unknown category ids are removed from new ones;
+ * - people that already exist (same id, or same name) are reused; their entries are restored by id.
  */
-export function planImport(parsed, { categories: existingCategories, budgets: existingBudgets }) {
+export function planImport(
+  parsed,
+  { categories: existingCategories, budgets: existingBudgets, people: existingPeople = [] },
+) {
   const existingById = new Map(existingCategories.map((c) => [c.id, c]));
   const existingByName = new Map(existingCategories.map((c) => [`${c.type}|${c.name.toLocaleLowerCase()}`, c]));
   const idMap = new Map();
@@ -240,14 +297,40 @@ export function planImport(parsed, { categories: existingCategories, budgets: ex
     budgetsToCreate.push({ ...budget, categoryIds: ids });
   }
 
+  const existingPeopleIds = new Set(existingPeople.map((person) => person.id));
+  const personIdMap = new Map();
+  const peopleToCreate = [];
+  for (const person of parsed.people ?? []) {
+    if (existingPeopleIds.has(person.id)) {
+      personIdMap.set(person.id, person.id);
+      continue;
+    }
+    const sameName = findPersonByName([...existingPeople, ...peopleToCreate], person.name);
+    if (sameName) {
+      personIdMap.set(person.id, sameName.id);
+      continue;
+    }
+    peopleToCreate.push(person);
+    personIdMap.set(person.id, person.id);
+  }
+  const finalPeople = new Map([...existingPeople, ...peopleToCreate].map((person) => [person.id, person]));
+  const ledger = (parsed.ledger ?? []).map((entry) => {
+    const personId = personIdMap.get(entry.personId) ?? entry.personId;
+    return { ...entry, personId, personName: finalPeople.get(personId)?.name ?? entry.personName };
+  });
+
   return {
     transactions,
     categories: categoriesToCreate,
     budgets: budgetsToCreate,
+    people: peopleToCreate,
+    ledger,
     skipped: {
       transactions: parsed.skipped.transactions + mismatched,
       categories: parsed.skipped.categories,
       budgets: parsed.skipped.budgets + budgetsSkipped,
+      people: parsed.skipped.people ?? 0,
+      ledger: parsed.skipped.ledger ?? 0,
     },
   };
 }

@@ -1,14 +1,17 @@
 import { useEffect, useMemo, useState } from 'react';
 import { subscribeToBudgets, OVERALL_BUDGET_ID } from '@/services/budgetService';
 import { subscribeToCategories } from '@/services/categoryService';
+import { subscribeToLedger, subscribeToPeople } from '@/services/ledgerService';
 import { notifyTransactionsChanged, subscribeToTransactions } from '@/services/transactionService';
 import { DEFAULT_SETTINGS, subscribeToSettings } from '@/services/userService';
 import { RECENT_WINDOW_MONTHS } from '@/utils/constants';
 import { getWindowStartKey } from '@/utils/dates';
+import { getLedgerTotals, getPersonBalances } from '@/utils/ledger';
 import { createCategoryResolver } from '@/utils/transactions';
 import {
   BudgetsContext,
   CategoriesContext,
+  LedgerContext,
   RecentTransactionsContext,
   SettingsContext,
 } from './contexts';
@@ -30,6 +33,8 @@ export function UserDataProvider({ children }) {
   const [categoriesState, setCategoriesState] = useState({ status: 'loading', categories: [], error: null });
   const [budgetsState, setBudgetsState] = useState({ status: 'loading', budgets: [], error: null });
   const [recentState, setRecentState] = useState({ status: 'loading', items: [], error: null });
+  const [peopleState, setPeopleState] = useState({ status: 'loading', people: [], error: null });
+  const [ledgerState, setLedgerState] = useState({ status: 'loading', entries: [], error: null });
   const [windowStart] = useState(() => getWindowStartKey(RECENT_WINDOW_MONTHS));
 
   useEffect(
@@ -112,11 +117,45 @@ export function UserDataProvider({ children }) {
 
   const recentValue = useMemo(() => ({ ...recentState, windowStart }), [recentState, windowStart]);
 
+  // Lend & Borrow: people and their entries are small collections, kept live for the session.
+  useEffect(
+    () =>
+      subscribeToPeople(
+        (people) => setPeopleState({ status: 'ready', people, error: null }),
+        (error) => setPeopleState((current) => ({ ...current, status: 'error', error })),
+      ),
+    [],
+  );
+
+  useEffect(
+    () =>
+      subscribeToLedger(
+        (entries) => setLedgerState({ status: 'ready', entries, error: null }),
+        (error) => setLedgerState((current) => ({ ...current, status: 'error', error })),
+      ),
+    [],
+  );
+
+  const ledgerValue = useMemo(() => {
+    const balances = getPersonBalances(peopleState.people, ledgerState.entries);
+    const statuses = [peopleState.status, ledgerState.status];
+    return {
+      people: peopleState.people,
+      entries: ledgerState.entries,
+      balances,
+      totals: getLedgerTotals(balances),
+      status: statuses.includes('error') ? 'error' : statuses.includes('loading') ? 'loading' : 'ready',
+      error: peopleState.error ?? ledgerState.error,
+    };
+  }, [peopleState, ledgerState]);
+
   return (
     <SettingsContext.Provider value={settingsValue}>
       <CategoriesContext.Provider value={categoriesValue}>
         <BudgetsContext.Provider value={budgetsValue}>
-          <RecentTransactionsContext.Provider value={recentValue}>{children}</RecentTransactionsContext.Provider>
+          <RecentTransactionsContext.Provider value={recentValue}>
+            <LedgerContext.Provider value={ledgerValue}>{children}</LedgerContext.Provider>
+          </RecentTransactionsContext.Provider>
         </BudgetsContext.Provider>
       </CategoriesContext.Provider>
     </SettingsContext.Provider>

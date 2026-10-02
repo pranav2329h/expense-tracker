@@ -11,7 +11,7 @@ import { NAV_ITEMS } from './navigation';
 import { UserMenuCard } from './UserMenuCard';
 
 const PRIMARY = NAV_ITEMS.filter((item) => ['/dashboard', '/transactions', '/budgets'].includes(item.to));
-const SECONDARY = NAV_ITEMS.filter((item) => ['/analytics', '/settings'].includes(item.to));
+const SECONDARY = NAV_ITEMS.filter((item) => ['/lend-borrow', '/analytics', '/settings'].includes(item.to));
 
 const itemClass = (active) =>
   cn(

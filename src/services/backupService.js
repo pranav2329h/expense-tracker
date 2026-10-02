@@ -11,6 +11,7 @@ import {
 import { sortTransactions } from '@/utils/transactions';
 import { importBudgets } from './budgetService';
 import { importCategories } from './categoryService';
+import { importLedger } from './ledgerService';
 import { fetchAllTransactions, importTransactions } from './transactionService';
 
 export async function exportTransactionsCsv(resolveCategory) {
@@ -23,10 +24,10 @@ export async function exportTransactionsCsv(resolveCategory) {
   return transactions.length;
 }
 
-export async function exportJsonBackup({ categories, budgets, settings, resolveCategory }) {
+export async function exportJsonBackup({ categories, budgets, settings, resolveCategory, people, ledger }) {
   assertOnline();
   const transactions = sortTransactions(await fetchAllTransactions());
-  const backup = buildBackup({ transactions, categories, budgets, settings, resolveCategory });
+  const backup = buildBackup({ transactions, categories, budgets, settings, resolveCategory, people, ledger });
   downloadFile(JSON.stringify(backup, null, 2), backupFileName(), 'application/json');
   return transactions.length;
 }
@@ -43,11 +44,15 @@ export async function readBackupFile(file) {
   return parseBackup(await file.text());
 }
 
-/** Executes an import plan from planImport(): categories, then budgets, then transactions. */
+/**
+ * Executes an import plan from planImport(): categories, budgets, transactions, then
+ * Lend & Borrow people and entries.
+ */
 export async function runImport(plan, onProgress) {
   assertOnline();
   await importCategories(plan.categories);
   await importBudgets(plan.budgets);
   const transactions = await importTransactions(plan.transactions, onProgress);
-  return { transactions, categories: plan.categories.length, budgets: plan.budgets.length };
+  const ledger = await importLedger(plan.people ?? [], plan.ledger ?? []);
+  return { transactions, categories: plan.categories.length, budgets: plan.budgets.length, ...ledger };
 }

@@ -54,6 +54,15 @@ Each signed-in user has a private workspace for expenses, income, budgets and ca
 - Budget, spent, remaining and a progress meter, with a month switcher for past months
 - In-app alerts at **80%**, **90%** and **100%**, for example "You have used 90% of your Food budget." or "Food budget exceeded by ₹850."
 
+**Lend & Borrow**
+- Track money between you and other people, like a khata book:
+  - **You gave:** you lent money, paid for them, or repaid them
+  - **You got:** they lent you money, paid for something of yours (such as a bill), or repaid you
+- Each person has a running balance shown as "Owes you ₹X", "You owe ₹X" or "Settled up". Partial repayments are just more entries, and **Settle up** clears a balance in one tap.
+- Overview with totals ("You will get", "You will give", net), search, and filters (Owe you / You owe / Settled). Each person has a page listing their entries with the balance after each one.
+- When someone pays a bill for you, you can also record it as an expense in the same step, so your spending stays accurate.
+- Lend & Borrow is kept separate from income, expenses and the balance, because lending money isn't spending it. A summary card appears on the dashboard while anything is outstanding.
+
 **Analytics**
 - Period selector: this month, last month, last 3, 6 or 12 months, this year, or a custom range
 - Summary cards: total income, total expense, savings, average daily expense, largest expense and most used category
@@ -63,7 +72,7 @@ Each signed-in user has a private workspace for expenses, income, budgets and ca
 **Settings and data**
 - Profile (name, email, photo from Google), currency (INR, USD, EUR or GBP) and theme (light, dark or system), synced across devices
 - Create, rename, re-icon and delete categories
-- Export transactions to **CSV**, export a full **JSON backup**, and **import** a backup (validated and sanitised, with a confirmation step)
+- Export transactions to **CSV**, export a full **JSON backup** (including Lend & Borrow), and **import** a backup (validated and sanitised, with a confirmation step)
 
 **Experience**
 - Responsive layouts:
@@ -116,12 +125,13 @@ The project uses JavaScript (JSX). ESLint is configured with the React Hooks and
     │   ├── categoryService.js
     │   ├── budgetService.js
     │   ├── userService.js      Settings, profile, onboarding
+    │   ├── ledgerService.js    Lend & Borrow people and entries
     │   └── backupService.js    CSV/JSON export, backup import
     ├── context/                Auth, theme, toasts, per-user data, transaction dialog
     ├── hooks/                  useAuth, useTransactions, useBudgets, useCategories, ...
     ├── layouts/                AuthLayout, DashboardLayout
-    ├── pages/                  Dashboard, Transactions, Budgets, Analytics, Settings,
-    │   │                       Onboarding, NotFound, SetupRequired
+    ├── pages/                  Dashboard, Transactions, Budgets, LendBorrow, PersonLedger,
+    │   │                       Analytics, Settings, Onboarding, NotFound, SetupRequired
     │   └── auth/               Login, Register, ForgotPassword
     ├── components/
     │   ├── common/             Button, Input, Select, DatePicker, Modal, ConfirmDialog,
@@ -131,13 +141,15 @@ The project uses JavaScript (JSX). ESLint is configured with the React Hooks and
     │   ├── budgets/            BudgetProgress, BudgetAlerts, BudgetCard, BudgetFormModal
     │   ├── charts/             ChartCard, ExpenseBarChart, IncomeExpenseChart,
     │   │                       CategoryBreakdown, RankedBarList
-    │   ├── dashboard/          RecentTransactions, MonthlyBudgetCard
+    │   ├── ledger/             LedgerEntryModal, PersonFormModal, BalanceLabel
+    │   ├── dashboard/          RecentTransactions, MonthlyBudgetCard, LedgerSummaryCard
     │   ├── settings/           Profile, preferences, category manager, data section
     │   ├── layout/             Sidebar, MobileNav
     │   ├── routing/            ProtectedRoute, PublicOnlyRoute, SetupGate
     │   └── auth/               Google button, password input, form alerts
     └── utils/
         ├── calculations.js     All financial maths (totals, budgets, analytics)
+        ├── ledger.js           Lend & Borrow balances, totals, running balance
         ├── currency.js         Intl.NumberFormat currency formatting (en-IN for INR)
         ├── dates.js            date-fns helpers, presets, timezone-safe date keys
         ├── validation.js       Input validation/sanitising (forms, services, import)
@@ -184,6 +196,9 @@ users/{uid}/
                             description, date, createdAt, updatedAt }
   categories/{id}         { name, type, icon, isDefault, createdAt, updatedAt }
   budgets/{id}            { name, scope, categoryIds, amount, createdAt, updatedAt }
+  people/{id}             { name, createdAt, updatedAt }                      Lend & Borrow
+  ledger/{id}             { personId, personName, direction, amount, note,    Lend & Borrow
+                            date, createdAt, updatedAt }
 ```
 
 | Field | Notes |
@@ -195,6 +210,7 @@ users/{uid}/
 | `paymentMethod` | `cash`, `upi`, `credit_card`, `debit_card`, `bank_transfer`, `net_banking` or `other` |
 | `categoryName` | Copy of the category name, used as a fallback if the category is later deleted |
 | Budget `scope` | `"overall"` (always stored at id `overall`) or `"category"` (1–30 `categoryIds`) |
+| Ledger `direction` | `"gave"` (they owe you more) or `"got"` (you owe them more). A person's balance is the sum of what you gave minus the sum of what you got. |
 
 **First login:** when `settings/data` doesn't exist, the onboarding screen appears. Completing or skipping it writes the following in **one Firestore transaction**, which first re-checks that settings don't exist yet:
 - settings
@@ -210,7 +226,7 @@ Because of that check and the fixed ids, seeding can never run twice or create d
 
 The rules in [`firestore.rules`](firestore.rules) enforce:
 
-- **Authentication and ownership:** every path is `/users/{userId}/...` and requires `request.auth != null && request.auth.uid == userId`. A user can never read, create, modify or delete another user's profile, settings, transactions, categories or budgets.
+- **Authentication and ownership:** every path is `/users/{userId}/...` and requires `request.auth != null && request.auth.uid == userId`. A user can never read, create, modify or delete another user's profile, settings, transactions, categories, budgets, or Lend & Borrow people and entries.
 - **Default deny:** anything not explicitly matched is rejected, including the `/users/{uid}` document itself and unknown subcollections.
 - **Schema validation on every write:**
   - required fields, and no extra fields (`hasAll` + `hasOnly`)
@@ -378,7 +394,7 @@ The audit fields `createdAt` and `updatedAt` are Firestore server timestamps.
 
 | Data | How it is read | Live? |
 | --- | --- | --- |
-| Settings, categories, budgets | Small collections, one listener each for the session | Yes. Changes from other devices appear instantly. |
+| Settings, categories, budgets, Lend & Borrow people and entries | Small collections, one listener each for the session | Yes. Changes from other devices appear instantly. |
 | Last 6 months of transactions | One date-bounded listener for the session. Powers the dashboard, budgets and recent analytics without re-reading on navigation. | Yes. Writes appear immediately. |
 | All-time totals (balance) | Two server-side `sum()`/`count()` aggregation queries, re-run after writes | No |
 | Transactions page | Server-side filters + date range, ordered by date, 50 per page with "Load more" | Yes, for the loaded pages |

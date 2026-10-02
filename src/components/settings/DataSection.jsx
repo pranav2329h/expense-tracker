@@ -6,6 +6,7 @@ import { ConfirmDialog } from '@/components/common/ConfirmDialog';
 import { ProgressBar } from '@/components/common/ProgressBar';
 import { useBudgets } from '@/hooks/useBudgets';
 import { useCategories } from '@/hooks/useCategories';
+import { useLedger } from '@/hooks/useLedger';
 import { useSettings } from '@/hooks/useSettings';
 import { useToast } from '@/hooks/useToast';
 import { exportJsonBackup, exportTransactionsCsv, readBackupFile, runImport } from '@/services/backupService';
@@ -19,6 +20,7 @@ const plural = (count, singular, pluralForm = `${singular}s`) =>
 export function DataSection() {
   const { categories, resolveCategory } = useCategories();
   const { budgets } = useBudgets();
+  const { people, entries } = useLedger();
   const { settings } = useSettings();
   const toast = useToast();
   const fileInput = useRef(null);
@@ -45,7 +47,7 @@ export function DataSection() {
 
   const exportJson = () =>
     run('json', async () => {
-      await exportJsonBackup({ categories, budgets, settings, resolveCategory });
+      await exportJsonBackup({ categories, budgets, settings, resolveCategory, people, ledger: entries });
       toast.success('Backup exported.');
     });
 
@@ -55,8 +57,12 @@ export function DataSection() {
     if (!file) return;
     run('read', async () => {
       const parsed = await readBackupFile(file);
-      const nextPlan = planImport(parsed, { categories, budgets });
-      if (nextPlan.transactions.length + nextPlan.categories.length + nextPlan.budgets.length === 0) {
+      const nextPlan = planImport(parsed, { categories, budgets, people });
+      const total = ['transactions', 'categories', 'budgets', 'people', 'ledger'].reduce(
+        (sum, key) => sum + nextPlan[key].length,
+        0,
+      );
+      if (total === 0) {
         throw new AppError('This backup has no new data to import.', 'import/empty');
       }
       setPlan(nextPlan);
@@ -71,7 +77,7 @@ export function DataSection() {
       toast.success('Data imported successfully.');
     });
 
-  const skippedTotal = plan ? plan.skipped.transactions + plan.skipped.categories + plan.skipped.budgets : 0;
+  const skippedTotal = plan ? Object.values(plan.skipped).reduce((sum, count) => sum + count, 0) : 0;
 
   return (
     <Card id="data" className="scroll-mt-20 p-4 sm:p-6">
@@ -107,7 +113,7 @@ export function DataSection() {
       </div>
       <p className="mt-3 text-xs text-ink-3">
         CSV includes date, type, amount, category, payment method and description. The JSON backup also includes your
-        categories and budgets, and can be imported back into any account.
+        categories, budgets and Lend & Borrow records, and can be imported back into any account.
       </p>
 
       <ConfirmDialog
@@ -125,6 +131,8 @@ export function DataSection() {
             <ul className="list-disc space-y-1 pl-5">
               {plan.categories.length > 0 && <li>{plural(plan.categories.length, 'new category', 'new categories')}</li>}
               {plan.budgets.length > 0 && <li>{plural(plan.budgets.length, 'new budget')}</li>}
+              {plan.people.length > 0 && <li>{plural(plan.people.length, 'new person', 'new people')} in Lend & Borrow</li>}
+              {plan.ledger.length > 0 && <li>{plural(plan.ledger.length, 'Lend & Borrow entry', 'Lend & Borrow entries')}</li>}
               {skippedTotal > 0 && <li>{plural(skippedTotal, 'invalid or duplicate entry', 'invalid or duplicate entries')} will be skipped</li>}
             </ul>
             <p className="text-xs text-ink-3">
