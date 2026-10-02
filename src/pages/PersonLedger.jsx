@@ -21,25 +21,17 @@ import { assertOnline, getErrorMessage } from '@/utils/errors';
 import { cn } from '@/utils/cn';
 import { getBalanceStatus, getSettlement, withRunningBalance } from '@/utils/ledger';
 
-const DIRECTION_LABELS = { gave: 'You gave', got: 'You got' };
+const firstNameOf = (name) => name.replace(/\(.*?\)/g, '').trim().split(/\s+/)[0] || name;
+const payments = (count) => `${count} ${count === 1 ? 'payment' : 'payments'}`;
 
 function BalanceAfter({ balance }) {
   const { format } = useCurrency();
   const status = getBalanceStatus(balance);
-  if (status === 'settled') return <span className="text-ink-3">Settled</span>;
+  if (status === 'settled') return <span className="text-ink-3">Settled up</span>;
   return (
-    <span className="text-ink-3">
+    <span className={status === 'get' ? 'text-positive' : 'text-negative'}>
       {status === 'get' ? 'Owes you ' : 'You owe '}
       <span className="tabular">{format(Math.abs(balance))}</span>
-    </span>
-  );
-}
-
-function EntryAmount({ entry }) {
-  const { format } = useCurrency();
-  return (
-    <span className={cn('font-semibold tabular', entry.direction === 'gave' ? 'text-negative' : 'text-positive')}>
-      {format(entry.amount)}
     </span>
   );
 }
@@ -71,7 +63,7 @@ export default function PersonLedger() {
       <div className="space-y-4" aria-busy="true">
         <SkeletonCard lines={3} label="Loading…" />
         <Card className="p-5">
-          <SkeletonList rows={4} label="Loading entries…" />
+          <SkeletonList rows={4} label="Loading payments…" />
         </Card>
       </div>
     );
@@ -105,6 +97,8 @@ export default function PersonLedger() {
     );
   }
 
+  const firstName = firstNameOf(person.name);
+  const whoPaid = { gave: 'I paid', got: `${firstName} paid` };
   const balance = summary?.balance ?? 0;
   const balanceStatus = getBalanceStatus(balance);
   const settlement = getSettlement(balance);
@@ -137,12 +131,12 @@ export default function PersonLedger() {
             direction: settlement.direction,
             amount: settlement.amount,
             date: todayKey(),
-            note: 'Settled up',
+            note: settlement.direction === 'got' ? 'Paid me back' : 'I paid back',
           },
           { people },
         ),
-      `Settled up with ${person.name}.`,
-      'Unable to settle up. Please try again.',
+      `Done — you and ${person.name} are settled up.`,
+      'Unable to record the payment. Please try again.',
     );
     if (ok) setConfirm(null);
   };
@@ -157,7 +151,7 @@ export default function PersonLedger() {
   };
 
   const removeEntry = async () => {
-    const ok = await run(() => deleteLedgerEntry(confirm.entry.id), 'Entry deleted.', 'Unable to delete the entry.');
+    const ok = await run(() => deleteLedgerEntry(confirm.entry.id), 'Payment deleted.', 'Unable to delete the payment.');
     if (ok) {
       setConfirm(null);
       setEditor((current) => ({ ...current, open: false }));
@@ -169,7 +163,7 @@ export default function PersonLedger() {
       ? `${person.name} owes you`
       : balanceStatus === 'give'
         ? `You owe ${person.name}`
-        : 'All settled up';
+        : 'All settled up — nobody owes anything';
 
   return (
     <>
@@ -188,9 +182,7 @@ export default function PersonLedger() {
               <Avatar name={person.name} size="lg" />
               <div className="min-w-0">
                 <h1 className="truncate text-xl font-semibold tracking-tight text-ink">{person.name}</h1>
-                <p className="text-sm text-ink-3">
-                  {personEntries.length} {personEntries.length === 1 ? 'entry' : 'entries'}
-                </p>
+                <p className="text-sm text-ink-3">{payments(personEntries.length)}</p>
               </div>
             </div>
             <div className="flex gap-1">
@@ -222,48 +214,51 @@ export default function PersonLedger() {
             )}
             {summary && (summary.gave > 0 || summary.got > 0) && (
               <p className="mt-1.5 text-xs text-ink-3">
-                You gave {format(summary.gave)} · You got {format(summary.got)}
+                In total: you paid {format(summary.gave)} · {firstName} paid {format(summary.got)}
               </p>
             )}
           </div>
 
-          <div className="mt-6 grid gap-2 sm:flex sm:flex-wrap">
-            <div className="grid grid-cols-2 gap-2 sm:flex">
-              <Button variant="secondary" leftIcon={ArrowUpRight} onClick={() => openEditor('gave')}>
-                You gave
-              </Button>
-              <Button variant="secondary" leftIcon={ArrowDownLeft} onClick={() => openEditor('got')}>
-                You got
-              </Button>
+          <div className="mt-6">
+            <p className="mb-2 text-xs font-medium text-ink-3">Add a payment</p>
+            <div className="grid gap-2 sm:flex sm:flex-wrap">
+              <div className="grid grid-cols-2 gap-2 sm:flex">
+                <Button variant="secondary" leftIcon={ArrowUpRight} onClick={() => openEditor('gave')}>
+                  I paid
+                </Button>
+                <Button variant="secondary" leftIcon={ArrowDownLeft} onClick={() => openEditor('got')}>
+                  {firstName} paid
+                </Button>
+              </div>
+              {settlement && (
+                <Button leftIcon={Handshake} onClick={() => setConfirm('settle')}>
+                  {settlement.direction === 'got' ? 'Got it all back' : 'Paid it all back'} · {format(settlement.amount)}
+                </Button>
+              )}
             </div>
-            {settlement && (
-              <Button leftIcon={Handshake} onClick={() => setConfirm('settle')}>
-                Settle up {format(settlement.amount)}
-              </Button>
-            )}
           </div>
         </Card>
 
         <Card className="overflow-clip">
-          <CardHeader title="Entries" description="Newest first" className="px-4 pt-4 sm:px-6 sm:pt-5" />
+          <CardHeader title="Payments" description="Newest first" className="px-4 pt-4 sm:px-6 sm:pt-5" />
           <div className="mt-3">
             {personEntries.length === 0 ? (
               <EmptyState
                 compact
                 icon={Receipt}
-                title="No entries yet"
-                description={`Record money you gave to or got from ${person.name}.`}
+                title="No payments yet"
+                description={`Add money you paid to ${firstName}, or that ${firstName} paid for you.`}
               />
             ) : isDesktop ? (
               <table className="w-full text-sm">
-                <caption className="sr-only">Entries with {person.name}</caption>
+                <caption className="sr-only">Payments between you and {person.name}</caption>
                 <thead>
                   <tr className="border-b border-line text-left text-xs font-medium text-ink-3">
                     <th scope="col" className="py-2.5 pr-3 pl-6 font-medium">Date</th>
-                    <th scope="col" className="px-3 py-2.5 font-medium">Details</th>
-                    <th scope="col" className="px-3 py-2.5 text-right font-medium">You gave</th>
-                    <th scope="col" className="px-3 py-2.5 text-right font-medium">You got</th>
-                    <th scope="col" className="px-3 py-2.5 text-right font-medium">Balance</th>
+                    <th scope="col" className="px-3 py-2.5 font-medium">Note</th>
+                    <th scope="col" className="px-3 py-2.5 font-medium">Who paid</th>
+                    <th scope="col" className="px-3 py-2.5 text-right font-medium">Amount</th>
+                    <th scope="col" className="px-3 py-2.5 text-right font-medium">Balance after</th>
                     <th scope="col" className="py-2.5 pr-6 pl-2">
                       <span className="sr-only">Actions</span>
                     </th>
@@ -274,8 +269,17 @@ export default function PersonLedger() {
                     <tr key={entry.id} className="border-b border-line last:border-b-0 hover:bg-subtle/60">
                       <td className="py-3 pr-3 pl-6 whitespace-nowrap text-ink-2 tabular">{formatDate(entry.date)}</td>
                       <td className="max-w-xs truncate px-3 py-3 text-ink">{entry.note || '—'}</td>
-                      <td className="px-3 py-3 text-right">{entry.direction === 'gave' && <EntryAmount entry={entry} />}</td>
-                      <td className="px-3 py-3 text-right">{entry.direction === 'got' && <EntryAmount entry={entry} />}</td>
+                      <td className="px-3 py-3 whitespace-nowrap text-ink-2">
+                        <span className="inline-flex items-center gap-1.5">
+                          {entry.direction === 'gave' ? (
+                            <ArrowUpRight className="size-3.5" aria-hidden="true" />
+                          ) : (
+                            <ArrowDownLeft className="size-3.5" aria-hidden="true" />
+                          )}
+                          {whoPaid[entry.direction]}
+                        </span>
+                      </td>
+                      <td className="px-3 py-3 text-right font-semibold text-ink tabular">{format(entry.amount)}</td>
                       <td className="px-3 py-3 text-right text-xs whitespace-nowrap">
                         <BalanceAfter balance={entry.balanceAfter} />
                       </td>
@@ -285,7 +289,7 @@ export default function PersonLedger() {
                           size="sm"
                           leftIcon={Pencil}
                           onClick={() => openEditor(entry.direction, entry)}
-                          aria-label={`Edit entry from ${formatDate(entry.date)}`}
+                          aria-label={`Edit payment from ${formatDate(entry.date)}`}
                         >
                           Edit
                         </Button>
@@ -303,18 +307,12 @@ export default function PersonLedger() {
                       onClick={() => openEditor(entry.direction, entry)}
                       className="flex w-full items-center gap-3 px-4 py-3 text-left hover:bg-subtle"
                     >
-                      <span
-                        className={cn(
-                          'grid size-9 shrink-0 place-items-center rounded-xl',
-                          entry.direction === 'gave' ? 'bg-negative-soft text-negative' : 'bg-positive-soft text-positive',
-                        )}
-                        aria-hidden="true"
-                      >
+                      <span className="grid size-9 shrink-0 place-items-center rounded-xl bg-subtle text-ink-2" aria-hidden="true">
                         {entry.direction === 'gave' ? <ArrowUpRight className="size-4" /> : <ArrowDownLeft className="size-4" />}
                       </span>
                       <span className="min-w-0 flex-1">
                         <span className="block truncate text-sm font-medium text-ink">
-                          {entry.note || DIRECTION_LABELS[entry.direction]}
+                          {entry.note || whoPaid[entry.direction]}
                         </span>
                         <span className="mt-0.5 block truncate text-xs">
                           <span className="text-ink-3">{formatDate(entry.date)} · </span>
@@ -322,8 +320,8 @@ export default function PersonLedger() {
                         </span>
                       </span>
                       <span className="flex shrink-0 flex-col items-end">
-                        <EntryAmount entry={entry} />
-                        <span className="text-xs text-ink-3">{DIRECTION_LABELS[entry.direction]}</span>
+                        <span className="text-sm font-semibold text-ink tabular">{format(entry.amount)}</span>
+                        <span className="text-xs text-ink-3">{whoPaid[entry.direction]}</span>
                       </span>
                     </button>
                   </li>
@@ -349,15 +347,15 @@ export default function PersonLedger() {
       <ConfirmDialog
         open={confirm === 'settle'}
         tone="primary"
-        title={`Settle up with ${person.name}?`}
-        description={
+        title={
           settlement
             ? settlement.direction === 'got'
-              ? `This records ${format(settlement.amount)} you got from ${person.name} today, bringing the balance to zero.`
-              : `This records ${format(settlement.amount)} you gave to ${person.name} today, bringing the balance to zero.`
+              ? `Did ${person.name} pay you back ${format(settlement.amount)}?`
+              : `Did you pay ${person.name} back ${format(settlement.amount)}?`
             : ''
         }
-        confirmLabel="Settle up"
+        description={`This adds the payment for today and makes your balance with ${person.name} ${format(0)}.`}
+        confirmLabel="Yes, record it"
         loading={busy}
         onConfirm={settleUp}
         onCancel={() => setConfirm(null)}
@@ -366,7 +364,7 @@ export default function PersonLedger() {
       <ConfirmDialog
         open={confirm === 'delete-person'}
         title={`Delete ${person.name}?`}
-        description={`This permanently deletes ${person.name} and all ${personEntries.length} of their entries. This action cannot be undone.`}
+        description={`This permanently deletes ${person.name} and all ${payments(personEntries.length)}. This action cannot be undone.`}
         confirmLabel="Delete"
         loading={busy}
         onConfirm={removePerson}
@@ -375,7 +373,7 @@ export default function PersonLedger() {
 
       <ConfirmDialog
         open={Boolean(confirm?.entry)}
-        title="Delete entry?"
+        title="Delete payment?"
         description="This action cannot be undone."
         confirmLabel="Delete"
         loading={busy}
@@ -385,7 +383,7 @@ export default function PersonLedger() {
         {confirm?.entry && (
           <div className="mt-4 rounded-xl border border-line bg-subtle px-4 py-3 text-sm">
             <p className="font-medium text-ink">
-              {DIRECTION_LABELS[confirm.entry.direction]} {format(confirm.entry.amount)}
+              {whoPaid[confirm.entry.direction]} {format(confirm.entry.amount)}
             </p>
             <p className="mt-0.5 text-ink-3">
               {confirm.entry.note || 'No note'} · {formatDate(confirm.entry.date)}

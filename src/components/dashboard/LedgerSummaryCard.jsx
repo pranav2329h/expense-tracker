@@ -22,12 +22,12 @@ export function LedgerSummaryCard() {
       </div>
       <dl className="grid flex-1 grid-cols-2 gap-4">
         <div>
-          <dt className="text-xs text-ink-3">You will get</dt>
+          <dt className="text-xs text-ink-3">They owe you</dt>
           <dd className="text-lg font-semibold text-positive">{format(totals.toGet)}</dd>
           <dd className="text-xs text-ink-3">{totals.getCount ? `from ${people(totals.getCount)}` : 'Nobody owes you'}</dd>
         </div>
         <div>
-          <dt className="text-xs text-ink-3">You will give</dt>
+          <dt className="text-xs text-ink-3">You owe</dt>
           <dd className="text-lg font-semibold text-negative">{format(totals.toGive)}</dd>
           <dd className="text-xs text-ink-3">{totals.giveCount ? `to ${people(totals.giveCount)}` : "You don't owe anyone"}</dd>
         </div>

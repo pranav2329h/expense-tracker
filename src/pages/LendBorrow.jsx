@@ -20,7 +20,7 @@ import { formatDate } from '@/utils/dates';
 
 const FILTERS = [
   { value: 'all', label: 'All' },
-  { value: 'get', label: 'Owe you' },
+  { value: 'get', label: 'They owe you' },
   { value: 'give', label: 'You owe' },
   { value: 'settled', label: 'Settled' },
 ];
@@ -59,10 +59,10 @@ export default function LendBorrow() {
       <EmptyState
         icon={HandCoins}
         title="No one here yet"
-        description="Record money you lend or borrow — or when someone pays a bill for you — and keep track of who owes whom."
+        description="Add money you lend or borrow — or a bill someone pays for you — and always know who owes whom."
         action={
           <Button leftIcon={Plus} onClick={openAdd}>
-            Add entry
+            Add payment
           </Button>
         }
       />
@@ -89,7 +89,7 @@ export default function LendBorrow() {
               <span className="min-w-0 flex-1">
                 <span className="block truncate text-sm font-medium text-ink">{person.name}</span>
                 <span className="mt-0.5 block truncate text-xs text-ink-3">
-                  {person.count} {person.count === 1 ? 'entry' : 'entries'}
+                  {person.count} {person.count === 1 ? 'payment' : 'payments'}
                   {person.lastDate ? ` · Last ${formatDate(person.lastDate, 'dd MMM yyyy')}` : ''}
                 </span>
               </span>
@@ -106,10 +106,10 @@ export default function LendBorrow() {
     <>
       <PageHeader
         title="Lend & Borrow"
-        description="Keep track of money you give to and get from people."
+        description="Money you lend, borrow, or that someone pays for you — and who still owes whom."
         actions={
           <Button leftIcon={Plus} onClick={openAdd}>
-            Add entry
+            Add payment
           </Button>
         }
       />
@@ -117,14 +117,14 @@ export default function LendBorrow() {
       <div className="space-y-4 sm:space-y-6">
         <section aria-label="Totals" className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-3">
           <StatCard
-            label="You will get"
+            label="They owe you"
             icon={ArrowDownLeft}
             value={format(totals.toGet)}
             loading={status === 'loading'}
             caption={totals.getCount ? `From ${people(totals.getCount)}` : 'Nobody owes you'}
           />
           <StatCard
-            label="You will give"
+            label="You owe"
             icon={ArrowUpRight}
             value={format(totals.toGive)}
             loading={status === 'loading'}
@@ -132,24 +132,24 @@ export default function LendBorrow() {
           />
           <StatCard
             className="col-span-2 lg:col-span-1"
-            label="Net position"
+            label="Overall"
             icon={Scale}
-            value={format(totals.net)}
+            value={format(Math.abs(totals.net))}
             loading={status === 'loading'}
             caption={
               totals.net > 0
-                ? "You're owed more than you owe"
+                ? 'Overall, people owe you this much'
                 : totals.net < 0
-                  ? 'You owe more than you are owed'
-                  : 'All square'
+                  ? 'Overall, you owe this much'
+                  : 'All settled up'
             }
           />
         </section>
 
         <p className="flex items-start gap-2 text-xs text-ink-3">
           <Info className="mt-px size-3.5 shrink-0" aria-hidden="true" />
-          Lend & Borrow is kept separate from your income, expenses and balance. When someone pays a bill for you,
-          you can also add it to your expenses while recording it.
+          Lending and borrowing isn't income or spending, so it doesn't change your balance. If someone pays a bill for
+          you, tick “Also add to my expenses” when you add it.
         </p>
 
         {balances.length > 0 && (

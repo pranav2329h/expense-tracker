@@ -1,5 +1,5 @@
 import { useId, useState } from 'react';
-import { ArrowDownLeft, ArrowUpRight, Trash2 } from 'lucide-react';
+import { ArrowDownLeft, ArrowUpRight, CircleCheck, Trash2 } from 'lucide-react';
 import { Button } from '@/components/common/Button';
 import { DatePicker } from '@/components/common/DatePicker';
 import { Input } from '@/components/common/Input';
@@ -11,30 +11,67 @@ import { useCurrency } from '@/hooks/useCurrency';
 import { useLedger } from '@/hooks/useLedger';
 import { useToast } from '@/hooks/useToast';
 import { createLedgerEntry, updateLedgerEntry } from '@/services/ledgerService';
+import { roundMoney } from '@/utils/calculations';
 import { LIMITS } from '@/utils/constants';
 import { todayKey } from '@/utils/dates';
 import { assertOnline, getErrorMessage } from '@/utils/errors';
-import { findPersonByName, validateLedgerEntryInput } from '@/utils/validation';
+import { getBalanceStatus } from '@/utils/ledger';
+import { cn } from '@/utils/cn';
+import { findPersonByName, validateAmount, validateLedgerEntryInput } from '@/utils/validation';
 
 const FORM_ID = 'ledger-entry-form';
 
-const DIRECTION_OPTIONS = [
-  { value: 'gave', label: 'You gave', icon: ArrowUpRight },
-  { value: 'got', label: 'You got', icon: ArrowDownLeft },
+// Stored as 'gave' / 'got'; shown as who paid.
+const WHO_PAID_OPTIONS = [
+  { value: 'gave', label: 'I paid', icon: ArrowUpRight },
+  { value: 'got', label: 'They paid', icon: ArrowDownLeft },
 ];
 
-const DIRECTION_HINTS = {
-  gave: 'You lent them money, paid for something of theirs, or paid them back.',
-  got: 'They lent you money, paid for something of yours (like a bill), or paid you back.',
+const WHO_PAID_HINTS = {
+  gave: 'Use this when you lend them money, pay for something of theirs, or pay them back.',
+  got: 'Use this when they lend you money, pay for something of yours (like your bill), or pay you back.',
 };
 
 const NOTE_PLACEHOLDERS = {
-  gave: 'e.g. Lent for rent',
+  gave: 'e.g. Lent for train tickets',
   got: 'e.g. Paid my electricity bill',
 };
 
+const effectOf = (direction, amount) => (direction === 'gave' ? amount : -amount);
+
+/** "After saving: Rahul will owe you ₹2,500" — shows what the payment does to the balance. */
+function BalancePreview({ name, balance }) {
+  const { format } = useCurrency();
+  const status = getBalanceStatus(balance);
+  const who = name || null;
+  const text =
+    status === 'get'
+      ? `${who ?? 'They'} will owe you ${format(balance)}`
+      : status === 'give'
+        ? `You will owe ${who ?? 'them'} ${format(Math.abs(balance))}`
+        : `You${who ? ` and ${who}` : ''} will be all settled up`;
+
+  return (
+    <p
+      aria-live="polite"
+      className={cn(
+        'flex items-start gap-2 rounded-xl px-4 py-3 text-sm font-medium',
+        status === 'get' && 'bg-positive-soft text-positive',
+        status === 'give' && 'bg-negative-soft text-negative',
+        status === 'settled' && 'bg-subtle text-ink-2',
+      )}
+    >
+      {status === 'settled' && <CircleCheck className="mt-0.5 size-4 shrink-0" aria-hidden="true" />}
+      <span>
+        <span className="font-normal opacity-80">After saving: </span>
+        {text}
+      </span>
+    </p>
+  );
+}
+
 function LedgerEntryForm({ entry, person, defaults, onSaved, onSavingChange }) {
-  const { people } = useLedger();
+  const { people, balances } = useLedger();
   const { byId, expenseCategories } = useCategories();
   const { symbol } = useCurrency();
   const toast = useToast();
@@ -56,8 +93,19 @@ function LedgerEntryForm({ entry, person, defaults, onSaved, onSavingChange }) {
     setErrors((current) => ({ ...current, [field]: undefined }));
   };
 
-  const matchedPerson = !fixedPerson && values.personName.trim() ? findPersonByName(people, values.personName.trim()) : null;
+  const typedName = values.personName.trim();
+  const matchedPerson = !fixedPerson && typedName ? findPersonByName(people, typedName) : null;
+  const previewPerson = fixedPerson ?? matchedPerson;
   const canAddExpense = !entry && values.direction === 'got';
+
+  // Live preview of the balance after this payment is saved.
+  const amount = validateAmount(values.amount).value;
+  let previewBalance = null;
+  if (amount) {
+    const current = previewPerson ? (balances.find((item) => item.id === previewPerson.id)?.balance ?? 0) : 0;
+    const previous = entry ? effectOf(entry.direction, entry.amount) : 0;
+    previewBalance = roundMoney(current - previous + effectOf(values.direction, amount));
+  }
 
   const handleSubmit = async (event) => {
     event.preventDefault();
@@ -75,7 +123,7 @@ function LedgerEntryForm({ entry, person, defaults, onSaved, onSavingChange }) {
       assertOnline();
       if (entry) {
         await updateLedgerEntry(entry, input);
-        toast.success('Entry updated.');
+        toast.success('Payment updated.');
       } else {
         const withExpense = canAddExpense && expense.enabled;
         await createLedgerEntry(input, {
@@ -83,11 +131,11 @@ function LedgerEntryForm({ entry, person, defaults, onSaved, onSavingChange }) {
           expense: withExpense ? { categoryId: expense.categoryId } : null,
           categoriesById: byId,
         });
-        toast.success(withExpense ? 'Entry saved and added to your expenses.' : 'Entry saved.');
+        toast.success(withExpense ? 'Payment saved and added to your expenses.' : 'Payment saved.');
       }
       onSaved();
     } catch (error) {
-      toast.error(getErrorMessage(error, 'Unable to save the entry. Please try again.'));
+      toast.error(getErrorMessage(error, 'Unable to save the payment. Please try again.'));
     } finally {
       onSavingChange(false);
     }
@@ -97,7 +145,7 @@ function LedgerEntryForm({ entry, person, defaults, onSaved, onSavingChange }) {
     <form id={FORM_ID} noValidate onSubmit={handleSubmit} className="space-y-5">
       {fixedPerson ? (
         <p className="rounded-xl bg-subtle px-4 py-3 text-sm text-ink-2">
-          With <span className="font-semibold text-ink">{fixedPerson.name}</span>
+          Between you and <span className="font-semibold text-ink">{fixedPerson.name}</span>
         </p>
       ) : (
         <div>
@@ -111,11 +159,11 @@ function LedgerEntryForm({ entry, person, defaults, onSaved, onSavingChange }) {
             onChange={(event) => update('personName', event.target.value)}
             error={errors.personName}
             hint={
-              values.personName.trim()
+              typedName
                 ? matchedPerson
-                  ? `Adds to ${matchedPerson.name}'s existing balance.`
+                  ? `Adds to your balance with ${matchedPerson.name}.`
                   : 'New person — they will be added to your list.'
-                : 'Pick someone you already track, or type a new name.'
+                : 'Pick someone from your list, or type a new name.'
             }
             data-autofocus
           />
@@ -129,12 +177,12 @@ function LedgerEntryForm({ entry, person, defaults, onSaved, onSavingChange }) {
 
       <div>
         <SegmentedControl
-          label="What happened?"
+          label="Who paid?"
           value={values.direction}
           onChange={(direction) => update('direction', direction)}
-          options={DIRECTION_OPTIONS}
+          options={WHO_PAID_OPTIONS}
         />
-        <p className="mt-2 text-xs text-ink-3">{DIRECTION_HINTS[values.direction]}</p>
+        <p className="mt-2 text-xs text-ink-3">{WHO_PAID_HINTS[values.direction]}</p>
       </div>
 
       <Input
@@ -149,6 +197,8 @@ function LedgerEntryForm({ entry, person, defaults, onSaved, onSavingChange }) {
         inputClassName="h-12 text-lg font-semibold tabular"
         data-autofocus={fixedPerson ? true : undefined}
       />
+
+      {previewBalance !== null && <BalancePreview name={previewPerson?.name ?? typedName} balance={previewBalance} />}
 
       <div className="grid gap-4 sm:grid-cols-2">
         <DatePicker label="Date" value={values.date} onChange={(date) => update('date', date)} error={errors.date} />
@@ -178,8 +228,7 @@ function LedgerEntryForm({ entry, person, defaults, onSaved, onSavingChange }) {
             <span>
               <span className="block text-sm font-medium text-ink">Also add to my expenses</span>
               <span className="mt-0.5 block text-xs text-ink-3">
-                Use this when they paid for something of yours, like a bill. It's recorded as a separate expense
-                that you can edit on the Transactions page.
+                Tick this if they paid for something of yours, like a bill or a meal, so your spending stays correct.
               </span>
             </span>
           </label>
@@ -204,8 +253,8 @@ function LedgerEntryForm({ entry, person, defaults, onSaved, onSavingChange }) {
 }
 
 /**
- * Add or edit a Lend & Borrow entry. `person` fixes the person (from their page);
- * `defaults.direction` preselects "You gave" / "You got".
+ * Add or edit a Lend & Borrow payment. `person` fixes the person (from their page);
+ * `defaults.direction` preselects "I paid" ('gave') or "They paid" ('got').
  */
 export function LedgerEntryModal({ open, entry, person, defaults, onClose, onRequestDelete }) {
   const [saving, setSaving] = useState(false);
@@ -217,7 +266,7 @@ export function LedgerEntryModal({ open, entry, person, defaults, onClose, onReq
     <Modal
       open={open}
       onClose={close}
-      title={entry ? 'Edit entry' : 'New entry'}
+      title={entry ? 'Edit payment' : 'Add payment'}
       fullScreenOnMobile
       footer={
         <>
@@ -236,7 +285,7 @@ export function LedgerEntryModal({ open, entry, person, defaults, onClose, onReq
             Cancel
           </Button>
           <Button type="submit" form={FORM_ID} loading={saving}>
-            {entry ? 'Save changes' : 'Save entry'}
+            {entry ? 'Save changes' : 'Save payment'}
           </Button>
         </>
       }

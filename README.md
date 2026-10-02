@@ -55,11 +55,12 @@ Each signed-in user has a private workspace for expenses, income, budgets and ca
 - In-app alerts at **80%**, **90%** and **100%**, for example "You have used 90% of your Food budget." or "Food budget exceeded by ₹850."
 
 **Lend & Borrow**
-- Track money between you and other people, like a khata book:
-  - **You gave:** you lent money, paid for them, or repaid them
-  - **You got:** they lent you money, paid for something of yours (such as a bill), or repaid you
-- Each person has a running balance shown as "Owes you ₹X", "You owe ₹X" or "Settled up". Partial repayments are just more entries, and **Settle up** clears a balance in one tap.
-- Overview with totals ("You will get", "You will give", net), search, and filters (Owe you / You owe / Settled). Each person has a page listing their entries with the balance after each one.
+- Track money between you and other people, like a khata book. Each payment answers one question, **"Who paid?"**:
+  - **I paid:** you lent them money, paid for something of theirs, or paid them back
+  - **They paid:** they lent you money, paid for something of yours (such as a bill), or paid you back
+- While you type, a preview shows the result, e.g. "After saving: Rahul will owe you ₹2,500".
+- Each person has a running balance: "Owes you ₹X" (green), "You owe ₹X" (red) or "Settled up". Partial repayments are just more payments, and **Got it all back** / **Paid it all back** clears a balance in one tap.
+- Overview with totals ("They owe you", "You owe", overall), search, and filters (They owe you / You owe / Settled). Each person has a page listing their payments with the balance after each one.
 - When someone pays a bill for you, you can also record it as an expense in the same step, so your spending stays accurate.
 - Lend & Borrow is kept separate from income, expenses and the balance, because lending money isn't spending it. A summary card appears on the dashboard while anything is outstanding.
 

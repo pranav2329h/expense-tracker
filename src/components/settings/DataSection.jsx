@@ -132,7 +132,7 @@ export function DataSection() {
               {plan.categories.length > 0 && <li>{plural(plan.categories.length, 'new category', 'new categories')}</li>}
               {plan.budgets.length > 0 && <li>{plural(plan.budgets.length, 'new budget')}</li>}
               {plan.people.length > 0 && <li>{plural(plan.people.length, 'new person', 'new people')} in Lend & Borrow</li>}
-              {plan.ledger.length > 0 && <li>{plural(plan.ledger.length, 'Lend & Borrow entry', 'Lend & Borrow entries')}</li>}
+              {plan.ledger.length > 0 && <li>{plural(plan.ledger.length, 'Lend & Borrow payment')}</li>}
               {skippedTotal > 0 && <li>{plural(skippedTotal, 'invalid or duplicate entry', 'invalid or duplicate entries')} will be skipped</li>}
             </ul>
             <p className="text-xs text-ink-3">
